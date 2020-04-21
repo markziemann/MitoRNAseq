@@ -44,6 +44,8 @@ colnames(x)<-sapply(strsplit(colnames(x),"_"),"[[",1)
 #dont forget gene names
 g<-read.table("../ref/Rattus_norvegicus.Rnor_6.0.99.genenames.tsv",row.names=1)
 x<-merge(g,x,by=0)
+# remove underscores from the gene biotype because it might cause issues later
+x$V3<-gsub("_","",x$V3)
 # gene accession numbers also have gene symbol and gene biotype
 rownames(x)=paste(x$Row.names,x$V2,x$V3,sep="_")
 # get rid of the columns that aren't required anymore
