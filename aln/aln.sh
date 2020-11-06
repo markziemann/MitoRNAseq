@@ -2,8 +2,8 @@
 set -x
 REF=../ref
 
-STAR=/mnt/mziemann/adam_trewin/sw/STAR-2.7.3a/bin/Linux_x86_64/STAR
-SKEWER=/mnt/mziemann/adam_trewin/sw/skewer/skewer
+STAR=../sw/STAR-2.7.3a/bin/Linux_x86_64/STAR
+SKEWER=../sw/skewer/skewer
 CWD=$(pwd)
 
 
@@ -25,7 +25,7 @@ $FQZ1 $FQZ2
 #fastx_trimmer -f 13 -i $FQ2 -o tmp && mv tmp $FQ2
 
 # map with STAR single end mode
-$STAR --runThreadN $(nproc) --quantMode GeneCounts --genomeLoad LoadAndKeep  \
+$STAR --runThreadN 30 --quantMode GeneCounts --genomeLoad LoadAndKeep  \
   --outSAMtype None --genomeDir $REF --readFilesIn=$FQ1 \
   --outFileNamePrefix $BASE.
 
@@ -40,12 +40,3 @@ for TAB in *ReadsPerGene.out.tab ; do
 done > 3col.tsv
 
 
-skip(){
-for FQZ1 in *R1*.fastq.gz ; do
-  BASE=$(echo $FQZ1 | sed 's/.fq.gz//')
-  FQZ2=$(echo $FQZ1 | sed 's/_1/_2/')
-  BASE=$(echo $FQZ1 | sed 's/.fq.gz//')
-  bwa mem -t 8 ../ref/rrna.fa $FQZ1 $FQZ2 > $BASE.rrna.sam
-  samtools view -bS $BASE.rrna.sam > $BASE.rrna.bam && rm $BASE.rrna.sam
-done
-}
