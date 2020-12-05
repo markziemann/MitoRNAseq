@@ -1,0 +1,61 @@
+---
+title: "Integrative pathway analysis of sedentary and trained rat cardiac and skeletal muscle tissue"
+author: "Mark Ziemann"
+date: "`r Sys.Date()`"
+output:
+    rmarkdown::html_document:
+        toc: true
+theme: cosmo
+---
+
+## Methods
+
+After Kallisto and DESeq2, here I am performing mitch to compare the effect of sedentary and trained rats.
+
+## Import data
+
+Import the Kallisto transcript counts.
+We can also include some info out of the Ensembl GTF file including gene name
+and gene class.
+
+```{r,begin}
+
+# libraries
+library("reshape2")
+library("DESeq2")
+library("mitch")
+library("gplots")
+
+# heres some DESeq2 tables I prepared earlier
+skel <- read.table("skeletal_rna.tsv",header=TRUE,row.names=1,sep="\t")
+rownames(skel) <- sapply( strsplit(rownames(skel)," ") , "[[", 2)
+rownames(skel) <- sapply( strsplit(rownames(skel),"\\.") , "[[", 1)
+
+heart <- read.table("heart_rna.tsv",header=TRUE,row.names=1,sep="\t")
+rownames(heart) <- sapply( strsplit(rownames(heart)," ") , "[[", 2)
+rownames(heart) <- sapply( strsplit(rownames(heart),"\\.") , "[[", 1)
+
+# genesets and gene table
+genesets<-gmt_import("ReactomePathways.gmt")
+mart <- read.table("mart_export.txt",header=TRUE,sep="\t")
+gt <- mart[,c("Gene.stable.ID","Human.gene.name")]
+
+l <- list("skel"=as.data.frame(skel),"heart"=as.data.frame(heart))
+
+m <- mitch_import(l,"DESeq2",geneTable=gt)
+
+head(res$enrichment_result,25)
+
+unlink("2d_mitch1.html")
+mitch_report(res,outfile="2d_mitch1.html")
+
+
+```
+
+## Session info
+
+```{r}
+
+sessionInfo()
+
+```

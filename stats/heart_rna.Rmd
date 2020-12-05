@@ -1,0 +1,265 @@
+---
+title: "Transcriptome sequencing of sedentary and trained rat cardiac tissue"
+author: "Mark Ziemann"
+date: "`r Sys.Date()`"
+output:
+    rmarkdown::html_document:
+        toc: true
+theme: cosmo
+---
+
+## Methods
+
+Rats were kept in sedentary conditions or were trained. 
+RNA was isolated from whole cardiac tissues ans sent to Macrogen for sequencing.
+
+Fastqc and MultiQC were run to summarise the QC checks that were done.
+
+Reads were then were mapped to the rat genome (Ensembl version 99) with Kallisto then
+imported to R for analysis with DESeq2.
+Pathway level analysis was then done using mitch with Reactome gene sets.
+
+## Read counts
+
+Import the Kallisto transcript counts.
+We can also include some info out of the Ensembl GTF file including gene name
+and gene class.
+
+```{r,begin}
+
+# libraries
+library("reshape2")
+library("DESeq2")
+library("mitch")
+library("gplots")
+
+# import the 3 column table
+tmp<-read.table("3col.tsv.gz",header=F)
+
+# convert the 3 col table into a standard count matrix 
+x<-as.matrix(acast(tmp, V2~V1, value.var="V3"))
+# tidy up the column headers
+colnames(x)<-sapply(strsplit(colnames(x),"_"),"[[",1)
+head(x)
+
+#dont forget gene names
+g<-read.table("../ref/Rattus_norvegicus.Rnor_6.0.cdna+ncrna.gene_names.tsv",row.names=1)
+g$gene_ID <- paste(g$V2,g$V3,g$V4)
+head(g)
+g[,1:3]=NULL
+x<-merge(g,x,by=0)
+rownames(x) <- x[,1]
+x[,1]=NULL
+# aggregate Tx data to genes
+xx <- aggregate(. ~ gene_ID,x,sum)
+# now round to integers so that DESeq2 doesn't fail
+rownames(xx) <- xx[,1]
+xx[,1]=NULL
+x <- round(xx)
+head(x)
+
+```
+
+## Samplesheet
+
+```{r,samplesheet}
+
+samplesheet <- read.table("samplesheet.tsv",header=TRUE)
+
+```
+
+## Overall clustering with multidimensional scaling
+
+This indicates that there is no clear clustering of samples by treatment group.
+
+```{r,mds1,fig.height=8,fig.width=8}
+
+ss <- samplesheet
+colours = c('pink', 'lightblue','lightgreen','gray')
+mds <- cmdscale(dist(t(x)))
+XMAX=max(mds[,1])*1.1
+XMIN=min(mds[,1])*1.1
+plot( mds*1.05 , cex=2, pch=19, xlab="Coordinate 1", ylab="Coordinate 2",
+  col = colours[as.factor(ss$Group)] ,  type = "p" ,
+  xlim=c(XMIN,XMAX),main="MDS plot",bty="n")
+text(mds, labels=colnames(x) )
+legend('topright', col=colours, legend=levels(as.factor(ss$Group)), pch = 16, cex = 1)
+
+```
+
+Number of reads is 60 to 80 M reads which is really comprehensive.
+
+```{r,nreads,fig.height=8,fig.width=8}
+
+par(mar=c(5,10,5,3))
+barplot(colSums(x),horiz=TRUE,las=2,main="number of reads per sample",cex.names=1)
+par(mai=c(1.02,0.82,0.82,0.42))
+
+```
+
+## Check purity of mito fraction samples
+
+Here I'm quantifying the mitochondrial read fraction.
+That is the number of mt reads divided by the total number of reads.
+There is no significant difference between groups.
+The mito frac is slightly larger here as compared to the skeletal muscle.
+
+```{r,mito_purity,fig.height=8,fig.width=8}
+
+par(mar=c(5,10,5,3))
+mtfrac <-  colSums(x[grep("^MT",rownames(x)),]) / colSums(x) 
+barplot(mtfrac,horiz=TRUE,las=2,main="Proportion mitochondrial reads",cex.names=1)
+par(mai=c(1.02,0.82,0.82,0.42))
+
+mylevels <- levels(as.factor(ss$Group))
+mylevels
+y <- x[,which(ss$Group==mylevels[1])]
+wholeS <- colSums(y[grep("^MT",rownames(y)),]) / colSums(y)
+y <- x[,which(ss$Group==mylevels[2])] 
+wholeT <- colSums(y[grep("^MT",rownames(y)),]) / colSums(y)
+
+boxplot(wholeS,wholeT,names=mylevels,ylab="mito frac")
+
+t.test(wholeS,wholeT)
+
+```
+
+
+## Functions
+
+```{r,func}
+
+run_de <- function(ss,xx){
+
+y <- round(xx)
+
+# MDS
+colours = c('yellow', 'orange')
+mds <- cmdscale(dist(t(y)))
+XMAX=max(mds[,1])*1.1
+XMIN=min(mds[,1])*1.1
+plot( mds*1.05 , cex=2 , pch=19, xlab="Coordinate 1", ylab="Coordinate 2",
+  col = colours[as.factor(ss$trt)] ,  type = "p" , 
+  xlim=c(XMIN,XMAX),main="MDS plot",bty="n")
+text(mds, labels=colnames(y) )
+legend('topright', col=colours, legend=c("ctrl","trt"), pch = 16, cex = 1.5)
+
+# DE
+dds <- DESeqDataSetFromMatrix(countData=y, colData = ss, design = ~ trt)
+dds <- DESeq(dds)
+de <- DESeq2::results(dds)
+de <- de[order(de$pvalue),]
+up <- rownames(subset(de, log2FoldChange>0 & padj<0.05 ))
+dn <- rownames(subset(de, log2FoldChange<0 & padj<0.05 ))
+str(up)
+str(dn)
+
+# MA plot
+sig <-subset(de, padj < 0.05 )
+GENESUP <- length(up)
+GENESDN <- length(dn)
+SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down")
+ns <-subset(de, padj > 0.05 )
+plot(log2(de$baseMean),de$log2FoldChange,
+     xlab="log2 basemean", ylab="log2 foldchange",
+     pch=19, cex=0.5, col="dark gray",
+     main="smear plot")
+points(log2(sig$baseMean),sig$log2FoldChange,
+       pch=19, cex=0.5, col="red")
+mtext(SUBHEADER)
+
+# heatmap
+yn <- y/colSums(y)*1000000
+yf <- yn[which(rownames(yn) %in% rownames(de)[1:50]),]
+mycols <- gsub("0","yellow",ss$trt)
+mycols <- gsub("1","orange",mycols)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(  as.matrix(yf), col=colfunc(25),scale="row",
+    ColSideColors =mycols ,trace="none",
+    margin = c(10,15), cexRow=0.6, cexCol=0.8 , main="Top 50 genes by p-val")
+mtext("yellow=ctrl, orange=trt")
+
+return(de)
+}
+
+```
+
+## Set up contrasts and perform DE analysis
+
+There is just 1 contrast: Whole tissue S versus T
+
+We are using DESeq2 to perform differential expression analysis for the specified
+contrasts.
+The run_de function does the analysis and generate the charts.
+Here we actually run the analysis.
+
+Here I show there are no individual genes with a statistically significant difference between groups.
+
+```{r,de,fig.height=8,fig.width=8}
+
+ss$trt <- as.numeric(as.factor(ss$Group))-1
+ss
+de1 <- run_de(ss,x)
+as.data.frame(de1[1:20,])
+write.table(de1,file="heart1.tsv",quote=FALSE,sep="\t")
+
+```
+
+## Pathway analysis with mitch
+
+Here we are doing a gene set analysis with my R package called mitch.
+I'm using gene sets downloaded from Reactome 5th Dec 2020.
+
+We lost 46% of genes after converting from rat to human.
+
+There were 259 differentially regulated gene sets (FDR<0.05).
+Of these 81 were downregulated and 178 were upregulated.
+
+
+```{r, mitch1, fig.height=8,fig.width=8}
+
+#download.file("https://reactome.org/download/current/ReactomePathways.gmt.zip",
+#    destfile="ReactomePathways.gmt.zip")
+#unzip("ReactomePathways.gmt.zip")
+genesets<-gmt_import("ReactomePathways.gmt")
+
+# i need to get some data from biomart to link rat and human gene IDs
+
+mart <- read.table("mart_export.txt",header=TRUE,sep="\t")
+gt <- mart[,c("Gene.stable.ID","Human.gene.name")]
+
+rownames(de1) <- sapply( strsplit(rownames(de1)," ") , "[[", 2) 
+rownames(de1) <- sapply( strsplit(rownames(de1),"\\.") , "[[", 1)
+
+m <- mitch_import(as.data.frame(de1),"DESeq2",geneTable=gt)
+
+res<-mitch_calc(m,genesets,priority="significance")
+
+nrow(subset(res$enrichment_result,p.adjustANOVA<0.05))
+
+head(res$enrichment_result,20)
+
+mitch_barplot <- function(res){
+  sig <- head(subset(res$enrichment_result,p.adjustANOVA<0.05),30)
+  sig <- sig[order(sig$s.dist),]
+  par(mar=c(3,25,1,1)); barplot(sig$s.dist,horiz=TRUE,las=2,cex.names = 0.6,cex.axis = 0.6,
+    names.arg=sig$set,main="Enrichment score") ;grid()
+}
+
+mitch_barplot(res)
+
+nrow(subset(res$enrichment_result,p.adjustANOVA<0.05&s.dist<0))
+nrow(subset(res$enrichment_result,p.adjustANOVA<0.05&s.dist>0))
+
+unlink("heart_mitch1.html")
+mitch_report(res,outfile="heart_mitch1.html")
+
+```
+
+## Session info
+
+```{r}
+
+sessionInfo()
+
+```
