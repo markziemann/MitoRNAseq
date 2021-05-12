@@ -47,9 +47,9 @@ head(x)
 
 #dont forget gene names
 g<-read.table("../ref/Rattus_norvegicus.Rnor_6.0.cdna+ncrna.gene_names.tsv",row.names=1)
-g$gene_ID <- paste(g$V2,g$V3,g$V4)
+g$gene_ID <- paste(g$V2,g$V3,g$V4,g$V5)
 head(g)
-g[,1:3]=NULL
+g <- g[,ncol(g),drop=FALSE]
 x<-merge(g,x,by=0)
 rownames(x) <- x[,1]
 x[,1]=NULL
