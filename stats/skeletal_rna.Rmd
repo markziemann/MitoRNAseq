@@ -5,6 +5,7 @@ date: "`r Sys.Date()`"
 output:
     rmarkdown::html_document:
         toc: true
+        toc_float: true
 theme: cosmo
 ---
 
@@ -33,6 +34,7 @@ library("reshape2")
 library("DESeq2")
 library("mitch")
 library("gplots")
+library("kableExtra")
 
 # import the 3 column table
 tmp<-read.table("3col.tsv.gz",header=F)
@@ -72,7 +74,7 @@ samplesheet$UDI <- gsub("UDI_0","",samplesheet$UDI)
 samplesheet$UDI <- gsub("UDI_","",samplesheet$UDI)
 samplesheet$label <- paste(samplesheet$fraction,samplesheet$Group)
 samplesheet <- samplesheet[order(samplesheet$UDI),]
-samplesheet
+samplesheet %>% kbl() %>% kable_paper("hover", full_width = F)
 
 ```
 
@@ -154,7 +156,7 @@ table(mitoT>0.4)
 
 ss$mtfrac <- mtfrac
 
-ss
+ss %>% kbl() %>% kable_paper("hover", full_width = F)
 
 mito <- subset(ss,fraction=="mito")
 
@@ -343,24 +345,24 @@ These results suggest that:
 
 ```{r,de,fig.height=8,fig.width=8}
 
-ss1
+ss1 %>% kbl() %>% kable_paper("hover", full_width = F)
 de1 <- run_de(ss1,x1)
-as.data.frame(de1[1:20,])
+as.data.frame(de1[1:20,]) %>% kbl() %>% kable_paper("hover", full_width = F)
 write.table(de1,file="de1.tsv",quote=FALSE,sep="\t")
 
-ss2
+ss2 %>% kbl() %>% kable_paper("hover", full_width = F)
 de2 <- run_de(ss2,x2)
-as.data.frame(de1[1:20,])
+as.data.frame(de2[1:20,]) %>% kbl() %>% kable_paper("hover", full_width = F)
 write.table(de2,file="de2.tsv",quote=FALSE,sep="\t")
 
-ss3
+ss3 %>% kbl() %>% kable_paper("hover", full_width = F)
 de3 <- run_de(ss3,x3)
-as.data.frame(de3[1:20,])
+as.data.frame(de3[1:20,]) %>% kbl() %>% kable_paper("hover", full_width = F)
 write.table(de3,file="de3.tsv",quote=FALSE,sep="\t")
 
-ss4
+ss4 %>% kbl() %>% kable_paper("hover", full_width = F)
 de4 <- run_de(ss4,x4)
-as.data.frame(de4[1:20,])
+as.data.frame(de4[1:20,]) %>% kbl() %>% kable_paper("hover", full_width = F)
 write.table(de4,file="de4.tsv",quote=FALSE,sep="\t")
 
 
@@ -398,26 +400,24 @@ ss4 <- subset(ss,Group=="T")
 ss4$trt <- grepl("mito",ss4$fraction)*1
 x4 <- x[,which(colnames(x) %in% rownames(ss4))]
 
-ss2
+ss2 %>% kbl() %>% kable_paper("hover", full_width = F)
 de2 <- run_de(ss2,x2)
-as.data.frame(de2[1:20,])
+as.data.frame(de2[1:20,]) %>% kbl() %>% kable_paper("hover", full_width = F)
 write.table(de2,file="de2b.tsv",quote=FALSE,sep="\t")
 
-ss3
+ss3 %>% kbl() %>% kable_paper("hover", full_width = F)
 de3 <- run_de(ss3,x3)
-head(de3,20)
-as.data.frame(de3[1:20,])
+as.data.frame(de3[1:20,]) %>% kbl() %>% kable_paper("hover", full_width = F)
 write.table(de3,file="de3b.tsv",quote=FALSE,sep="\t")
 
-ss4
+ss4 %>% kbl() %>% kable_paper("hover", full_width = F)
 de4 <- run_de(ss4,x4)
-head(de4,20)
-as.data.frame(de4[1:20,])
+as.data.frame(de4[1:20,]) %>% kbl() %>% kable_paper("hover", full_width = F)
 write.table(de4,file="de4b.tsv",quote=FALSE,sep="\t")
 
-ss5
+ss5 %>% kbl() %>% kable_paper("hover", full_width = F)
 de5 <- run_de_cov(ss5,x5)
-as.data.frame(de5[1:20,])
+as.data.frame(de5[1:20,]) %>% kbl() %>% kable_paper("hover", full_width = F)
 write.table(de5,file="de5b.tsv",quote=FALSE,sep="\t")
 
 
@@ -429,19 +429,19 @@ write.table(de5,file="de5b.tsv",quote=FALSE,sep="\t")
 high <- x[which(colnames(x) %in% subset(mito,mtfrac>0.6)$RatID )] 
 high <- high/colSums(high)*1000000 
 high$mean <- rowMeans(high)
-head(high[order(-high$mean),],20)
+head(high[order(-high$mean),],20) %>% kbl() %>% kable_paper("hover", full_width = F)
 
 # med
 med <- x[which(colnames(x) %in% subset(mito,mtfrac<0.6 & mtfrac > 0.3)$RatID )]  
 med <- med/colSums(med)*1000000
 med$mean <- rowMeans(med)
-head(med[order(-med$mean),],20)
+head(med[order(-med$mean),],20) %>% kbl() %>% kable_paper("hover", full_width = F)
 
 # low
 low <- x[which(colnames(x) %in% subset(mito,mtfrac<0.3)$RatID )]
 low <- low/colSums(low)*1000000
 low$mean <- rowMeans(low)
-head(low[order(-low$mean),],20)
+head(low[order(-low$mean),],20) %>% kbl() %>% kable_paper("hover", full_width = F)
 
 ```
 
@@ -477,7 +477,7 @@ res<-mitch_calc(m,genesets,priority="significance")
 
 nrow(subset(res$enrichment_result,p.adjustANOVA<0.05))
 
-head(res$enrichment_result,20)
+head(res$enrichment_result,20) %>% kbl() %>% kable_paper("hover", full_width = F)
 
 mitch_barplot <- function(res){
   sig <- head(subset(res$enrichment_result,p.adjustANOVA<0.05),30)
