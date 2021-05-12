@@ -59,6 +59,8 @@ xx[,1]=NULL
 x <- round(xx)
 head(x)
 
+write.table(x,file="countmatrix_skeletal.tsv",quote=FALSE,sep="\t")
+
 ```
 
 ## Samplesheet
@@ -69,6 +71,7 @@ samplesheet <- read.table("samplesheet.tsv",header=TRUE)
 samplesheet$UDI <- gsub("UDI_0","",samplesheet$UDI)
 samplesheet$UDI <- gsub("UDI_","",samplesheet$UDI)
 samplesheet$label <- paste(samplesheet$fraction,samplesheet$Group)
+samplesheet <- samplesheet[order(samplesheet$UDI),]
 samplesheet
 
 ```
@@ -105,10 +108,12 @@ plot( mds*1.05 , cex=2, pch=19, xlab="Coordinate 1", ylab="Coordinate 2",
 text(mds, labels=colnames(x) )
 legend('topright', col=colours, legend=levels(as.factor(ss$label)), pch = 16, cex = 1)
 
+
 ```
 
 ```{r,nreads,fig.height=8,fig.width=8}
 
+ss$nreads<-colSums(x)
 par(mar=c(5,10,5,3))
 barplot(colSums(x),horiz=TRUE,las=2,main="number of reads per sample",cex.names=0.5)
 par(mai=c(1.02,0.82,0.82,0.42))
@@ -148,6 +153,19 @@ table(mitoS>0.4)
 table(mitoT>0.4)
 
 ss$mtfrac <- mtfrac
+
+ss
+
+mito <- subset(ss,fraction=="mito")
+
+plot(mito$nreads,mito$mtfrac,pch=19,col="lightblue",xlab="No. reads", ylab="mtDNA proportion",cex=3)
+text(mito$nreads,mito$mtfrac,labels=mito$RatID)
+abline(h=0.4,v=6E6,col="red")
+
+plot(mito$nreads,mito$mtfrac,pch=19,col="lightblue",xlab="No. reads", ylab="mtDNA proportion",cex=3)
+text(mito$nreads,mito$mtfrac,labels=mito$Group)
+abline(h=0.4,v=6E6,col="red")
+
 
 ```
 
@@ -209,6 +227,62 @@ mtext("yellow=ctrl, orange=trt")
 return(de)
 }
 
+# covariate
+run_de_cov <- function(ss,xx){
+
+y <- round(xx)
+
+# MDS
+colours = c('yellow', 'orange')
+mds <- cmdscale(dist(t(y)))
+XMAX=max(mds[,1])*1.1
+XMIN=min(mds[,1])*1.1
+plot( mds*1.05 , cex=2 , pch=19, xlab="Coordinate 1", ylab="Coordinate 2",
+  col = colours[as.factor(ss$trt)] ,  type = "p" ,
+  xlim=c(XMIN,XMAX),main="MDS plot",bty="n")
+text(mds, labels=colnames(y) )
+legend('topright', col=colours, legend=c("ctrl","trt"), pch = 16, cex = 1.5)
+
+# DE
+dds <- DESeqDataSetFromMatrix(countData=y, colData = ss, design = ~ mtfrac + trt)
+dds <- DESeq(dds)
+de <- DESeq2::results(dds)
+de <- de[order(de$pvalue),]
+up <- rownames(subset(de, log2FoldChange>0 & padj<0.05 ))
+dn <- rownames(subset(de, log2FoldChange<0 & padj<0.05 ))
+str(up)
+str(dn)
+
+# MA plot
+sig <-subset(de, padj < 0.05 )
+GENESUP <- length(up)
+GENESDN <- length(dn)
+SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down")
+ns <-subset(de, padj > 0.05 )
+plot(log2(de$baseMean),de$log2FoldChange,
+     xlab="log2 basemean", ylab="log2 foldchange",
+     pch=19, cex=0.5, col="dark gray",
+     main="smear plot")
+points(log2(sig$baseMean),sig$log2FoldChange,
+       pch=19, cex=0.5, col="red")
+mtext(SUBHEADER)
+
+# heatmap
+yn <- y/colSums(y)*1000000
+yf <- yn[which(rownames(yn) %in% rownames(de)[1:50]),]
+mycols <- gsub("0","yellow",ss$trt)
+mycols <- gsub("1","orange",mycols)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(  as.matrix(yf), col=colfunc(25),scale="row",
+    ColSideColors =mycols ,trace="none",
+    margin = c(10,15), cexRow=0.6, cexCol=0.8 , main="Top 50 genes by p-val")
+mtext("yellow=ctrl, orange=trt")
+
+return(de)
+}
+
+
+
 ```
 
 ## Set up contrasts
@@ -238,6 +312,11 @@ x3 <- x[,which(colnames(x) %in% rownames(ss3))]
 ss4 <- subset(samplesheet,Group=="T")
 ss4$trt <- grepl("mito",ss4$fraction)*1
 x4 <- x[,which(colnames(x) %in% rownames(ss4))]
+
+ss5 <- subset(mito,nreads>6E6 & mtfrac>0.4)
+ss5$trt <- grepl("T",ss5$Group)*1
+x5 <- x[,which(colnames(x) %in% rownames(ss5))]
+
 
 ```
 
@@ -276,13 +355,14 @@ write.table(de2,file="de2.tsv",quote=FALSE,sep="\t")
 
 ss3
 de3 <- run_de(ss3,x3)
-head(de3,20)
+as.data.frame(de3[1:20,])
 write.table(de3,file="de3.tsv",quote=FALSE,sep="\t")
 
 ss4
 de4 <- run_de(ss4,x4)
-head(de4,20)
+as.data.frame(de4[1:20,])
 write.table(de4,file="de4.tsv",quote=FALSE,sep="\t")
+
 
 ```
 
@@ -296,6 +376,8 @@ Contrast 1 is not repeated.
 3. Whole versus mito fraction in S: 20 DEGs
 
 4. Whole versus mito fraction in T: 0 DEGs
+
+5. Mito fraction S versus T taking into consideration the mitofrac: 1 DEG
 
 
 ```{r, de2, fig.height=8,fig.width=8}
@@ -332,6 +414,34 @@ de4 <- run_de(ss4,x4)
 head(de4,20)
 as.data.frame(de4[1:20,])
 write.table(de4,file="de4b.tsv",quote=FALSE,sep="\t")
+
+ss5
+de5 <- run_de_cov(ss5,x5)
+as.data.frame(de5[1:20,])
+write.table(de5,file="de5b.tsv",quote=FALSE,sep="\t")
+
+
+```
+## Top expressed genes in low medium and high mtfrac samples
+
+```{r,fracs,fig.height=8,fig.width=8}
+# high
+high <- x[which(colnames(x) %in% subset(mito,mtfrac>0.6)$RatID )] 
+high <- high/colSums(high)*1000000 
+high$mean <- rowMeans(high)
+head(high[order(-high$mean),],20)
+
+# med
+med <- x[which(colnames(x) %in% subset(mito,mtfrac<0.6 & mtfrac > 0.3)$RatID )]  
+med <- med/colSums(med)*1000000
+med$mean <- rowMeans(med)
+head(med[order(-med$mean),],20)
+
+# low
+low <- x[which(colnames(x) %in% subset(mito,mtfrac<0.3)$RatID )]
+low <- low/colSums(low)*1000000
+low$mean <- rowMeans(low)
+head(low[order(-low$mean),],20)
 
 ```
 

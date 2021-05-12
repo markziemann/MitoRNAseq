@@ -58,6 +58,9 @@ xx[,1]=NULL
 x <- round(xx)
 head(x)
 
+write.table(x,file="countmatrix_heart.tsv",quote=FALSE,sep="\t")
+
+
 ```
 
 ## Samplesheet

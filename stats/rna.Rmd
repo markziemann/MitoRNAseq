@@ -78,6 +78,7 @@ xx$e2<-xx$`3`/xx$`2`
 # write tsv file for future reference
 write.table(xx,file="rna.tsv",sep="\t",quote=FALSE)
 # Top 50 enriched in lib 3 as compared to 1
+library("knitr")
 kable(head(xx[order(-xx$e1),],50),caption="Table 1. Top 50 enriched in lib 3 as compared to 1",format="pandoc")
 # Top 50 enriched in lib 3 as compared to 2
 kable(head(xx[order(-xx$e2),],50),caption="Table 2. Top 50 enriched in lib 3 as compared to 2",format="pandoc")
