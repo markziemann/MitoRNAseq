@@ -3,9 +3,12 @@ title: "Transcriptome sequencing of whole cell and mito fractions of sedentary a
 author: "Mark Ziemann"
 date: "`r Sys.Date()`"
 output:
-    rmarkdown::html_document:
-        toc: true
-        toc_float: true
+  html_document:
+    toc: yes
+    toc_float: true
+    code_folding: hide
+    fig_width: 7
+    fig_height: 7
 theme: cosmo
 ---
 
@@ -68,7 +71,6 @@ y <- x/colSums(x)*1000000
 
 write.table(y,file="rpmmatrix_skeletal.tsv",quote=FALSE,sep="\t")
 
-
 ```
 
 ## Samplesheet
@@ -115,7 +117,6 @@ plot( mds*1.05 , cex=2, pch=19, xlab="Coordinate 1", ylab="Coordinate 2",
   xlim=c(XMIN,XMAX),main="MDS plot",bty="n")
 text(mds, labels=colnames(x) )
 legend('topright', col=colours, legend=levels(as.factor(ss$label)), pch = 16, cex = 1)
-
 
 ```
 
@@ -169,11 +170,11 @@ mito <- subset(ss,fraction=="mito")
 
 plot(mito$nreads,mito$mtfrac,pch=19,col="lightblue",xlab="No. reads", ylab="mtDNA proportion",cex=3)
 text(mito$nreads,mito$mtfrac,labels=mito$RatID)
-abline(h=0.1,v=6E6,col="red")
+abline(h=0.1,v=2.5E6,col="red")
 
 plot(mito$nreads,mito$mtfrac,pch=19,col="lightblue",xlab="No. reads", ylab="mtDNA proportion",cex=3)
 text(mito$nreads,mito$mtfrac,labels=mito$Group)
-abline(h=0.1,v=6E6,col="red")
+abline(h=0.1,v=2.5E6,col="red")
 
 ```
 
@@ -194,7 +195,7 @@ This cuts the number of genes down from 20k to 6.9k.
 
 ```{r,normalise}
 
-mito <- subset(mito,nreads>3e6 & mtfrac > 0.1)
+mito <- subset(mito,nreads>2.5e6 & mtfrac > 0.1)
 ssm <- ss[which(ss$RatID %in% mito$RatID),]
 xm <- x[,which(colnames(x) %in% rownames(ssm))]
 xmito <- rbind(xm[grep("Mt-",rownames(xm) ),],xm[grep("Mt_",rownames(xm) ),])
@@ -243,14 +244,15 @@ rbind(xd2[grep("Mt-",rownames(xd2) ),],xd2[grep("Mt_",rownames(xd2) ),]) %>% kbl
 To dig deeper into this set of genes, I ran a heatmap.
 It shows that there is some enrichment as one might expect.
 
-I also show the barpl
+I also show the barplot.
 
-```{r,candidates}
+```{r,candidates,fig.width=8,fig.height=5}
 
 candidates <- rownames(head(xd2,30))
 candidates_df <- xmnorm[which(rownames(xmnorm) %in% candidates),]
 heatmap.2(as.matrix(candidates_df),trace="none",scale="row",margin=c(5,15),Colv="none",dendrogram="row")
 
+par(mfrow=c(1,2))
 sapply(1:nrow(candidates_df),function(i) {
   wc <- as.numeric(candidates_df[i,1:7])
   mit <- as.numeric(candidates_df[i,8:14])
@@ -265,7 +267,88 @@ sapply(1:nrow(candidates_df),function(i) {
   barplot(as.numeric(vec),names.arg=colnames(candidates_df),main=nam ,ylab="normalised expression")
   mtext(HEAD)
 } )
+par(mfrow=c(1,1))
 
+```
+
+## Differential analysis of sed vs trained mito fractions
+
+Now we'd like to know which transcripts are differentially regulated in the mito fractions comparing sedentary and trained sample groups.
+Using DESeq2 I show that there are no consistent differences observed at the FDR level.
+I used the mitochondrial fraction of reads as a covariate and it didn't improve the p-values at all.
+
+```{r,deseq1}
+
+# covariate
+run_de_cov <- function(ss,xx){
+
+y <- round(xx)
+
+# MDS
+colours = c('yellow', 'orange')
+mds <- cmdscale(dist(t(y)))
+XMAX=max(mds[,1])*1.1
+XMIN=min(mds[,1])*1.1
+plot( mds*1.05 , cex=2 , pch=19, xlab="Coordinate 1", ylab="Coordinate 2",
+  col = colours[as.factor(ss$trt)] ,  type = "p" ,
+  xlim=c(XMIN,XMAX),main="MDS plot",bty="n")
+text(mds, labels=colnames(y) )
+legend('topright', col=colours, legend=c("ctrl","trt"), pch = 16, cex = 1.5)
+
+# DE
+dds <- DESeqDataSetFromMatrix(countData=y, colData = ss, design = ~ mtfrac + trt)
+#dds <- DESeqDataSetFromMatrix(countData=y, colData = ss, design = ~ trt)
+dds <- DESeq(dds)
+de <- DESeq2::results(dds)
+de <- de[order(de$pvalue),]
+up <- rownames(subset(de, log2FoldChange>0 & padj<0.05 ))
+dn <- rownames(subset(de, log2FoldChange<0 & padj<0.05 ))
+str(up)
+str(dn)
+
+# MA plot
+sig <-subset(de, padj < 0.05 )
+GENESUP <- length(up)
+GENESDN <- length(dn)
+SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down")
+ns <-subset(de, padj > 0.05 )
+plot(log2(de$baseMean),de$log2FoldChange,
+     xlab="log2 basemean", ylab="log2 foldchange",
+     pch=19, cex=0.5, col="dark gray",
+     main="smear plot")
+points(log2(sig$baseMean),sig$log2FoldChange,
+       pch=19, cex=0.5, col="red")
+mtext(SUBHEADER)
+
+# heatmap
+yn <- y/colSums(y)*1000000
+yf <- yn[which(rownames(yn) %in% rownames(de)[1:20]),]
+mycols <- gsub("S","yellow",ss$trt)
+mycols <- gsub("T","orange",mycols)
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+heatmap.2(  as.matrix(yf), col=colfunc(25),scale="row",
+    ColSideColors =mycols ,trace="none",
+    margin = c(10,15), cexRow=0.8, cexCol=0.8 , main="Top 50 genes by p-val")
+mtext("yellow=sed, orange=trn")
+
+de <- merge(as.data.frame(de),yn,by=0)
+rownames(de) <- de[,1]
+de[,1]=NULL
+
+de <- de[order(de$pvalue),]
+
+return(de)
+}
+
+ss1 <- subset(ss,nreads>2e6 & fraction=="mito")
+ss1$trt <- factor(ss1$Group)
+x1 <- x[,which(colnames(x) %in% ss1$UDI)]
+dim(x1)
+x1 <- x1[which(rowMeans(x1)>10),]
+dim(x1)
+
+de1 <- run_de_cov(ss1,x1)
+head(de1,20)  %>% kbl(caption="top 20 genes by p-value") %>% kable_paper("hover", full_width = F)
 ```
 
 ## Session info
