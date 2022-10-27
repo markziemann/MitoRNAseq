@@ -1,0 +1,87 @@
+---
+title: "Transcriptome sequencing of whole cell and mito fractions of sedentary and trained rats - background reads versus exon reads"
+author: "Mark Ziemann"
+date: "`r Sys.Date()`"
+output:
+    rmarkdown::html_document:
+        toc: true
+        toc_float: true
+theme: cosmo
+---
+
+## Methods
+
+Reads were counted on exons as well as the whole gene + 3 kbp flanking sequence.
+
+## Read counts
+
+Import the STAR transcript counts.
+We can also include some info out of the Ensembl GTF file including gene name
+and gene class.
+
+```{r,begin}
+
+# libraries
+library("writexl")
+library("reshape2")
+library("gplots")
+library("kableExtra")
+
+```
+
+
+import the 3 column tables.
+
+```{r,read_data}
+
+exon <- read.table("EXON.tsv",header=F)
+gene <- read.table("GENE.tsv",header=F)
+
+exon <- as.matrix(acast(exon, V2~V1, value.var="V3"))
+gene <- as.matrix(acast(gene, V2~V1, value.var="V3"))
+
+colnames(exon) <- gsub("_R1_001.fastq.gz.Aligned.out.sorted.bam","",colnames(exon))
+colnames(gene) <- gsub("_R1_001.fastq.gz.Aligned.out.sorted.bam","",colnames(gene))
+
+```
+
+Now we'll look at the ratio of exonic/total reads for each gene.
+See that the majority of genes have small ratio,  <0.4 meaning less than 40%
+of reads are exonic.
+
+```{r,ratio}
+
+ratio <- exon/(gene+0.001)
+head(ratio)
+
+hist(ratio)
+
+```
+
+Now write the data to a file.
+
+
+```{r,write}
+
+exon <- as.data.frame(exon)
+exon <- cbind(rownames(exon),exon)
+
+gene <- as.data.frame(gene)
+gene <- cbind(rownames(gene),gene)
+
+ratio <- as.data.frame(ratio)
+ratio <- cbind(rownames(ratio),ratio)
+
+xldat <- list("exon"=exon,"gene"=gene,"ratio"=ratio)
+
+write_xlsx(xldat,"featurecounts.xlsx")
+
+```
+
+## Session info
+
+```{r}
+
+sessionInfo()
+
+```
